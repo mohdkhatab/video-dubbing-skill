@@ -1,0 +1,5 @@
+name: "video_dubbing"
+title: "Video Dubbing with AI Voices"
+description: "Dub a video episode into another language with per-character AI voices, original music kept and lip-sync fitted timing, using a fixed voice map and dialogue-turn clips."
+category: "Work and knowledge"
+include_in_prompt: true
