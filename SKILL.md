@@ -13,6 +13,16 @@
 
 - Keep all working files for one series in one workspace folder so the next episode reuses the same voice map, translations style and scripts.
 
+## Long videos are dubbed in 5-minute chunks — dub, test, pass, then move on
+
+- If the video is longer than about 25 minutes, NEVER dub it in one pass. Split it into chunks of about 5 minutes and process the chunks strictly one at a time, in order.
+- Cut at a clean boundary near each 5-minute mark — a scene change or a pause between dialogue turns — so no dialogue turn is ever sliced in half. Keep the chunk boundaries in a chunk map (chunk number, start, end) in the series workspace.
+- For each chunk, run the FULL pipeline end to end: subtitles or OCR, speaker attribution, turn building, translation with emotion tags, clip generation, audio separation, fitting, mixing — and then the chunk's own complete test pass (tester checks plus lip-sync check for that chunk).
+- A chunk counts as done only when its test pass is 100% clean. Never start chunk N+1 while chunk N still has an open problem: fix, re-test and pass chunk N first.
+- All chunks share ONE series workspace, ONE voice map, one translation style and the same mix settings, so voices, levels and loudness are identical from the first chunk to the last.
+- When every chunk has passed, combine the finished chunk videos in order into the full video (ffmpeg concat demuxer, stream copy where possible), then run one final verification of the combined file: total duration matches the source, every seam plays clean (no cut word, pop, level jump or lip-sync break at a join), and a spot test across the whole length still passes. Only then deliver.
+- Why this rule exists: in a single pass over a long file, lines get missed in the middle — separation runs die near the end, scans and attribution drift, unsubtitled speech hides between far-apart checks. Chunking bounds every failure to 5 minutes and proves each 5 minutes complete before the next one starts, so nothing in the middle is silently lost.
+
 ## Crew roles — four engineers on every job
 
 - Every dubbing job runs with four named engineering roles, each as its own separate pass (own agent or own checklist pass) so no role rubber-stamps its own work: the Voice Designer, the Voice Engineer, the Editor Engineer and the Lip-Sync Engineer.
