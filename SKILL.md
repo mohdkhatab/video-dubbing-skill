@@ -3,15 +3,35 @@
 ## Standing loop — learn from this skill, then teach it (permanent rule)
 
 - Before starting every new episode, read this whole skill and apply everything in it.
-- After every job, append everything newly learned to this skill as method only — including anything the user teaches or corrects during the session, such as delivery format, mix balance, or workflow fixes — so the skill keeps getting stronger with every video.
+- After every job, run the Skill Keeper pass at the end of this skill: harvest the job's findings, generalize them into method, place each rule in the section where it operates, and reconcile contradictions — so the skill keeps getting stronger with every video.
 
-## Run the pipeline in order
+## Run the pipeline in order — the full studio flow
 
-- Download the episode file first and verify it with ffprobe for duration, resolution and streams before any other work.
+Run every job through these stages in order; a stage starts only when the previous stage's outputs are verified on disk (existence AND size/duration — a launch message is not proof):
 
-- Extract or build the timed subtitle lines, attribute every line to a speaker, lock the voices, translate, generate clips, separate the original audio, build the dialogue track, mix, verify and deliver.
+1. **Source.** Download the episode and verify with ffprobe (duration, resolution, streams). Check what quality actually exists at the source and take the best that is really there; if the requested resolution does not exist, say so plainly and proceed with the best available — never silently fake it.
+2. **Separation + transcript in parallel.** Start Demucs separation (vocals stem + music bed) and the ASR transcript of the original audio at the same time — they are independent and both feed everything downstream.
+3. **Character register.** The Voice Engineering Pro builds the register: every character's name, age and original-voice scan (see crew roles).
+4. **Attribution.** Attribute every transcript line to a speaker (frames + pitch + meaning, checker pass on disputes), then run the vocal-stem **gap scan**: speech energy covered by no line is classified — missed dialogue becomes a dub line, non-verbal goes to the NV track, songs stay original.
+5. **Voices.** New characters go through the Voice Designer + Voice Engineering Pro design–test–regenerate loop and lock into the series voice map.
+6. **Turns + translation.** Group lines into dialogue turns; translate in Indian spoken Hinglish with emotion tags and light masala; mechanical pre-scan of every turn's text (no speaker labels, no name announcements).
+7. **Clips.** Generate one clip per turn with the locked voices (TTS hard rules below), fit each clip to its turn span in BOTH directions (no overrun, no underrun).
+8. **Tracks.** Build the dialogue track (per-turn level-matching), the NV track (original non-verbals spliced from the vocals stem) and the mix (proven recipe below).
+9. **Tester loop.** Content Tester, Voice Identity Tester and Lip-Sync Engineer run their passes; fix and re-test until a full pass is clean.
+10. **Chunk-scan gate.** Cut the finished episode into 1-minute chunks; scan, fix and lock each chunk in order (0.1 s lip-sync standard).
+11. **Brand + assemble.** Brand intro first, logo watermark burned into the frames; audio-only fixes are REMUXED onto the finished video stream, never re-encoded.
+12. **Deliver.** Master file + GoFile download link (md5-verified) + the editable pack. Then the Skill Keeper pass (see "Keep improving this skill").
 
-- Keep all working files for one series in one workspace folder so the next episode reuses the same voice map, translations style and scripts.
+Keep all working files for one series in one workspace folder so the next episode reuses the same voice map, translation style and scripts.
+
+## Studio operations — keep the job alive and honest
+
+- Long jobs WILL be interrupted (runtime and VM restarts kill detached processes roughly hourly). Build every long step to survive it: skip-guards that skip outputs already complete, resume entry points, and a watchdog that checks the workspace on an interval, restarts dead resumable steps and sends the user a short progress update when a stage completes or is resumed.
+- Verify outputs by SIZE, DURATION and CHECKSUM — never by existence or modification time alone. A killed write leaves a truncated file that looks fresh (a 30 MB stub once passed an mtime check where 234 MB was expected).
+- Never overwrite a file that another running process is reading (an encoder reading the mix while the mix is rebuilt corrupts both). Chain dependent steps so the rebuild starts only after the reader finishes, or write to a new filename and switch.
+- Kill processes by exact PID after checking their command line — a kill pattern that matches your own shell's command string kills your own shell.
+- Serialize heavy CPU work on a small box (about 4 cores / 8 GB): two heavy jobs at once (separation + frame extraction + encode) slow each other more than they gain. Stream long mixes in blocks; never hold several full-length float arrays in memory.
+- After every rebuild, confirm the output checksum CHANGED versus the previous build before testing it (see the fault index: silent import failure).
 
 ## Long videos are dubbed in 5-minute chunks — dub, test, pass, then move on
 
@@ -33,14 +53,14 @@
 - The Editor Engineer owns the final video edit: assembling the mix, trimming heads and tails, fading clip edges, removing overlaps, keeping levels consistent across the whole episode, and a final full watch-through QC of the finished file before delivery.
 - The Lip-Sync Engineer owns mouth sync for the whole video: he checks every single dialogue point and confirms the dubbed clip is running exactly while that character is speaking on screen — never before the mouth opens, never after it closes, never over another character's face.
 
-## Extract subtitles when they are hardcoded
+## Get the timed transcript — ASR first, subtitles and OCR as support
 
-- Check for a real subtitle stream first with ffprobe and only fall back to OCR when the subtitles are burned into the picture.
-
-- Sample frames at 0.25 second slabs across the subtitle band, OCR them, and merge repeated reads into timed segments so even sub-second lines survive.
-
-- Run a repair pass that re-reads single-language or broken segments at a larger scale and drops junk such as scene signs, credits and decorative text.
-
+- **Primary route: ASR on the original audio (Deepgram).** Transcribe the episode audio (or the vocals stem) with diarization in the ORIGINAL language (for Chinese: `--language zh --model nova-2`). A full episode transcribes in under a minute — this route replaced the multi-hour OCR scan and is the standing default. Run it in parallel with the Demucs separation.
+- Build utterances from the per-WORD timestamps (the API's utterance field can come back empty even when words are complete). Keep every word's start, end, speaker cluster and confidence — attribution and lip-sync both work from these.
+- **Diarization clusters are NOT characters.** One cluster routinely mixes two similar voices and one character can split across clusters. Clusters are a hint for attribution, never the answer: attribute per utterance with pitch + frames + meaning (next section).
+- Known ASR error class: names, shouts and rare words get misheard. Treat the transcript as evidence, not gospel — the checker pass and the gap scan exist to catch what it garbles, and a name that appears once in a strange form is probably a mishearing of the hero's name.
+- If the source carries a real subtitle stream or downloadable subtitle tracks, fetch them too — as a cross-check for names and missed lines, and to verify the ASR's coverage. Verify any external track's cue span against the actual file before trusting it (a page's tracks can belong to a different cut).
+- **OCR is the fallback**, used when ASR is unavailable or the audio is unusable: check for a subtitle stream with ffprobe first, then OCR the burned-in band — frames at 1 fps to build subtitle states by mask matching, each unique line OCR'd once at its middle frame, edges refined at 4 fps, orphan-slab hunt for sub-second lines, mask-hash cache and ~0.6x downscale for speed (full method in the Toolbox and Lessons). Expect hours, not minutes — that is exactly why ASR leads.
 - Install Python packages with `pip install --target` into the workspace and set TMPDIR inside the workspace, because system pip is externally managed and the default temp space fills up on large installs.
 
 ## Attribute every line to a speaker
@@ -52,6 +72,11 @@
 - Use the second subtitle language and web research to resolve names, roles and ages, and mark every uncertain attribution as an estimate instead of presenting it as certain.
 
 - Deliver a dubbing sheet with time, character, gender, apparent age, voice type and both dialogue languages before generating voices when the user wants to check it.
+
+- Run attribution in parallel slices (several agents, each on a slice of the episode), then run a dedicated CHECKER pass over every disputed or uncertain utterance — new faces, similar-looking elders, merged utterances that contain two speakers (split those at the word timestamps). The checker's ruling, from frames + pitch + meaning, is final.
+- **New-face protocol:** a character who resembles a known one may be genuinely NEW (a bald fist-master was nearly misfiled as a known ponytail elder). Never reuse a voice on resemblance alone: confirm identity with full-resolution frames and the original voice's pitch first; if new, the character goes on the register and gets its own designed voice.
+- **Recap rule:** many episodes open with a recap replaying earlier episodes' scenes. Recap lines are dubbed with the SAME locked voices as when those scenes first aired — attribute them to the original characters, never as new speakers, and expect the story's "current" cast list to mislead you there.
+- Merged-utterance traps: one ASR utterance can contain two speakers back to back, and one speaker's line can be split across two utterances. Rebuild true turns from word-level timestamps before attribution, and drop sub-word fragments that are just the tail of a neighbour's line.
 
 ## Check gender and voice matching with independent agents
 
@@ -76,6 +101,9 @@
 - For every new character, the Voice Engineering Pro loop from the crew roles section runs first: the Pro's character register (name, age, original-voice scan) feeds the Voice Designer's design sheet (gender, age band, build, personality, status, energy, target pitch range); the Designer test-generates candidate personal voices, the Pro tests each one for pitch, age feel and EMOTION against the sheet, and only the candidate that passes the loop is locked into the voice map. Save the design sheet in the series workspace so later episodes reuse it.
 
 - Change a voice only when the user asks, and record the change in the voice map so the new choice stays fixed from then on.
+
+- **Accent rule for Hindi dubs (hard-learned):** prefer catalog voices whose sheet shows an Indian / South-Asian accent. A foreign-accent voice speaking Hindi sounds wrong to the audience even when its pitch and age are perfect — that is a defect, and the fix is a voice change recorded in the map (a replaced voice keeps its replacement in every later episode). When no Indian-accent candidate exists in the needed pitch band, document the exception in the design sheet instead of silently accepting it.
+- A voice's CATALOG pitch is not its delivered pitch: the same voice renders different texts at measurably different pitches (an exclamatory line can sit 30% above the neutral test line). Verify pitch on the character's actual episode lines, not only on the design test line, and correct outliers per line with rubberband.
 
 ## Group lines into dialogue turns
 
@@ -108,7 +136,7 @@
 
 - Tag every dialogue turn with the emotion of its scene when translating: calm, happy, angry, threat, shock, grief, whisper, fear/panic, or shout. Save the tag with the turn so generation and testing can check against it.
 - The Voice Engineer makes the emotion audible in the speech itself, not just the words: a character in danger screaming for help must sound terrified and desperate (repeated cries, broken phrasing, exclamation punctuation), an angry threat must bite, a whisper must drop, grief must slow down. Flat, neutral delivery on an emotional scene is a defect.
-- Drive the emotion through word choice, punctuation, repetition and phrasing in the written line, and regenerate any take that comes back flat until the delivery matches the tag.
+- Drive the emotion through word choice, punctuation, repetition and phrasing in the written line, and regenerate any take that comes back flat until the delivery matches the tag. **Synthesis is deterministic per voice + text: re-rolling the identical text returns the identical take.** A "regeneration" that changes nothing is wasted — change the TEXT (punctuation, repetition, broken phrasing, a fitted extra word) or treat the take in post (pitch/level), never just re-run it.
 - Testers check emotion match as their own item: for every emotional turn they compare the dubbed delivery against the original scene's intensity and flag any turn where the feeling is missing or weaker than the picture.
 
 ## Generate the clips
@@ -123,6 +151,13 @@
 
 - Reconcile counts before mixing by confirming the number of generated clips equals the number of dialogue turns, and investigate any mismatch because an index offset once hid a missing line behind another line's success.
 
+**TTS hard rules (each one cost a real episode when broken):**
+
+- **Feed the TTS the dialogue text ONLY — never a speaker tag, name label, prefix or context marker.** A builder that passed `«CharacterName» line` made the voice SPEAK the character's name before every line of a finished episode. Before generating, mechanically scan every turn's text for labels/prefixes; after the mix, the Content Tester ASRs the mix and hunts for spoken names (see test section).
+- Strip the ID3 header from raw synthesis output before any ffmpeg use (the files arrive as WAV-with-ID3; the header corrupts downstream parsing). Strip leading/trailing padding silence from every clip before fitting (see Lessons).
+- Synthesis is deterministic per (voice, text) and its delivered pitch varies by text — measure the F0 of every finished clip for expressive characters and rubberband outliers to the design target; do not trust the catalog label or the design test line alone.
+- A name spoken INSIDE a line is allowed only when the original line genuinely calls someone by name in the scene. Line-opening name vocatives that sound like announcements are banned — rewrite the line without them.
+
 ## Remove the original dialogue and keep the music
 
 - Separate the original audio into vocals and accompaniment with Demucs using `python3 -m demucs --two-stems=vocals -n htdemucs`, and keep the no-vocals stem as the music and effects bed.
@@ -135,11 +170,10 @@
 
 ## Fit lip sync and build the track
 
-- Measure each generated clip and compare its duration with its turn window before placing it.
+- Measure each generated clip and compare its duration with its turn SPAN (the original speech's start-to-end, capped at the next turn's start) before placing it. Fit in BOTH directions: the clip must neither overrun the span nor end far inside it.
 
-- Speed a clip up with the ffmpeg atempo filter up to about 1.45 times when it overflows its window, and leave shorter clips at natural speed because a line ending early looks natural.
-
-- Trim with a short fade out only when a clip still overflows at maximum speed, and never let a clip spill into the next turn's speech.
+- **Underrun is a defect, not a style.** An earlier version of this section claimed a line ending early "looks natural" — wrong: a dub that stops while the character visibly keeps speaking is the most noticeable lip-sync failure there is (a 4.3 s early end shipped once and the user caught it by ear). Fit target: fill ratio (clip ÷ span) about 0.97. Cure underruns by growing the clip's own pauses, mild slow-down (atempo down to about 0.84), two-piece pause relocation, or a fitted re-record with a slightly fuller sentence — in that order.
+- Cure overruns the mirror way: compress the clip's pauses first, then atempo up to about 1.30 (1.45 only for off-screen lines), and trim with a short fade only when a clip still overflows at maximum speed. Never let a clip spill into the next turn's speech. After ANY duration surgery, re-measure fill ratio and mid-turn pause alignment — surgery in one direction creates defects in the other (see the chunk-scan gate).
 
 - Assemble all fitted clips onto a silent timeline at their turn start times and peak-normalize the finished dialogue track.
 
@@ -148,10 +182,18 @@
 - After the track is built, the Lip-Sync Engineer checks EVERY dialogue point in the video, one turn at a time: the dubbed speech must start when the character's mouth opens (within about 0.3 seconds) and end when the character stops speaking. Speech running over a closed mouth, over a reaction shot of another character, or starting noticeably after the mouth moves is a lip-sync defect.
 - Fix lip-sync defects by shifting the clip's offset inside its turn window first, then by re-fitting its speed, and only as a last resort by re-trimming the text. Record every defect with its exact second in the lip-sync report, and re-check the fixed points until the whole episode passes.
 - The lip-sync report is a required deliverable of the QA stage, alongside the tester reports — no episode is delivered without it.
+- Two measurement disciplines keep this check honest. (1) **Same-speaker waiver:** a clip running slightly past its span into the SAME speaker's immediately following turn is a continuation, not a defect — judge it as one speech. An overrun is a defect only when it covers ANOTHER speaker's start or a visible closed mouth. (2) **Offset hygiene:** energy-offset searches get contaminated by the next turn's onset energy and by energy already hot at the window edge; cap every span at the next turn's start, and when an onset flag contradicts the frames, the FRAMES win (off-screen narration and voiceover over scenery are verified by picture, not by moving the clip into a collision).
+
+## Brand the video — intro first, watermark burned in
+
+- Every delivered dub opens with the studio brand intro as the very first thing on screen, before the episode picture.
+- The studio logo sits as a watermark at the TOP-RIGHT for the whole video, BURNED INTO the video frames at full opacity (about 280 px wide at 720p, scaled with resolution) — never as a separate overlay layer, so it cannot be removed or blurred off without destroying the picture.
+- Use only the CURRENT brand assets from the branding workspace (the user replaces them by direct order; when he supplies a new logo, derive a transparent version, rebuild the intro from it, verify by compositing on a real episode frame, and retire the old assets to history — never mix versions inside one video).
+- Verify branding by extracting frames: one inside the intro, and two or three across the episode showing the watermark in place.
 
 ## Mix, verify and deliver
 
-- Mix the music bed at about 0.9 volume with the dialogue track at full volume using amix with normalize off, then master with loudnorm at about minus 15 LUFS and a true peak of minus 1.5.
+- Mix with the PROVEN recipe (an earlier "bed 0.9 / dialogue full" note in this section was wrong and produced voice-low mixes — do not use it): per-turn level-match every clip's RMS to the original vocals in its window (clamp 0.4–4.0x), duck the bed under dialogue (bed about x0.55 inside turn windows, x0.6 overall), dialogue track x1.9, `amix normalize=0`, then master with loudnorm at about minus 15 LUFS and a true peak of minus 1.5. After mixing, measure every turn's speech-frame dominance over the bed in the FINAL mix — target at least +3 dB, boost deficient turns on the dialogue track and re-check only those.
 
 - Mux the finished audio with the original video stream copied, and confirm the output duration matches the source duration exactly.
 
@@ -159,7 +201,7 @@
 
 - Before delivery, the Editor Engineer runs the final edit pass on the finished video: check head and tail trims, fade any hard clip edges, remove any remaining overlap, confirm loudness feels even across the whole episode (no scene suddenly louder or softer), and watch the full video start to finish as the last QC gate. Anything the Editor Engineer catches goes back into the fix loop before delivery.
 
-- Deliver the dubbed video plus an editable pack that contains the music-only video, the full dialogue track, the per-character clips and the voice list, so the user can import everything into a video editor and adjust it.
+- Deliver the dubbed video as a DOWNLOAD LINK (GoFile — bare MP4 chat attachments do not download in the user's app), md5-verified against the local master, plus an editable pack that contains the music-only video, the full dialogue track, the per-character clips, the voice list, subtitles in both languages and the QA reports, so the user can import everything into a video editor and adjust it.
 
 - Report honestly that lip sync is timing fitted rather than mouth perfect, and that faint traces of the original voice can survive separation in the loudest scenes.
 
@@ -169,10 +211,13 @@
 - When a character laughs, cries or makes any such sound in the original, keep the ORIGINAL sound: cut that exact moment from the separated original vocal stem and splice it into the dialogue track at its exact original timing, level-matched to the neighbouring dubbed turns, so it sits naturally in the final mix and matches the emotion on screen.
 - Detect these moments from the vocal-stem speech-energy blocks that fall outside dialogue turns, and from subtitle cues that are purely non-verbal; classify every such block (speech vs laugh vs cry vs other non-verbal) before mixing, and carry every confirmed laugh/cry/scream over from the original stem.
 - When one turn mixes speech with laughter or crying, dub the spoken words and keep the original non-verbal part, crossfading cleanly at the boundary so the voice and the emotion still feel like one performance.
+- **Songs are never dubbed.** Opening/ending themes and in-episode songs stay in the original voice on the music bed — the gap scan classifies continuous melodic spans as SONG and they are excluded from turns entirely. A sung passage mistaken for dialogue produces the worst lines in an episode; when in doubt, check the frames (performance shots, lyric captions) before dubbing a musical span.
 
 ## Test the finished dub in a fix and recheck loop
 
 - After the full dub is mixed, spawn multiple tester agents and assign each one a part of the episode to test.
+
+- The tester crew has three named specializations (plus the Editor's watch-through): **(1) Content Tester** — ASRs the FINAL MIX in the dub language and checks content: zero spoken name announcements (the TTS-prefix defect), zero leftover original-language dialogue, every scripted turn actually present and audible. **(2) Voice Identity Tester** — measures every turn's F0 in the final track against the voice map's design targets and re-checks gender and age feel per speaker, including quiet lines and shouts (pitch drifts hide in both). **(3) Lip-Sync Engineer** — the energy-method onset/offset pass over every turn (report required). A tester who only samples beginnings misses mid-episode defects: slices must tile the WHOLE episode with no gaps.
 
 - Have every tester check its part for missing dialogues, wrong speaker or wrong voice, gender mismatches, bad timing, lip sync drift, leftover original voice, emotion that does not match the scene, and any audio problem. The Lip-Sync Engineer's full-episode lip-sync report and the Editor Engineer's final edit pass are part of this same loop, not separate extras.
 
@@ -229,13 +274,36 @@
 - When a finished master needs an audio-only fix, never re-encode the video: remux the corrected, loudnormed mix onto the previous master's video stream with stream copy (applying the same audio delay the branding intro needs). This turns a ~40 minute encode into about a minute and removes the restart-risk window entirely.
 - A rebuild can silently produce the OLD result when a pipeline script fails at import (for example a missing PYTHONPATH entry for the workspace pylibs) and later steps keep running on stale inputs. After every rebuild, confirm the output checksum actually CHANGED versus the previous build before testing or delivering it.
 
+## Studio fault index — symptom → cause → fix
+
+When something is wrong, find it here before improvising. Every row was paid for by a real job.
+
+- **A voice speaks the character's name before the line** → the clip builder prepended a speaker tag to the TTS text → feed dialogue text only; rescan all turn texts; rebuild affected clips (TTS hard rules).
+- **Dub line ends while the mouth is still moving** → underrun (clip much shorter than the original span) → grow the clip's pauses, atempo down to ~0.84, two-piece relocation, or fitted re-record (Fit section).
+- **A hole of silence in the middle of a turn** → duration surgery compressed the pauses, or the dub has fewer pauses than the original → relocate/grow pauses to mirror the original's speech blocks; re-measure mid-turn runs after any surgery.
+- **A male character reads as female in the final mix** → pitch drift on shouts (or a wrong voice) → F0-measure the actual line; rubberband down to the design target; if the base voice is wrong, back to the Voice Engineering Pro loop.
+- **Hindi sounds foreign / accented wrong** → the catalog voice has a non-Indian accent → change to an Indian/South-Asian-accent voice and record the change in the voice map.
+- **Music bed or vocals stem is suddenly short (one chunk long)** → chunks joined with the concat PROTOCOL instead of the demuxer → rejoin with the concat demuxer + file list; verify total duration.
+- **Rebuild "succeeded" but the output is the old audio** → a pipeline script failed at import and later steps ran on stale inputs → check the output checksum changed; fix the import (PYTHONPATH) and rebuild with force.
+- **Mix or output file is far smaller than expected** → a restart/kill truncated the write while the mtime looked fresh → verify by size/duration; rebuild with force; never trust mtime.
+- **Encoder output corrupted after a mix fix** → the mix file was overwritten while the encoder was reading it → chain the rebuild after the reader exits, or write a new file and remux.
+- **Upload dies at ~1 GiB on every host** → sandbox egress wall → split the master at keyframes into ~800 MB playable parts, md5-verify each, deliver in order (or GoFile single upload under the wall).
+- **Demucs dies near the end of a long file** → memory peak on a full-length run → separate in ~300 s chunks with skip-guards, join with the demuxer.
+- **Diarization says one speaker, frames show two (or the reverse)** → ASR clusters mix similar voices → attribute per utterance with frames + pitch + meaning; checker pass rules.
+- **A "new" character sounds exactly like a known one — or a known voice sits on a new face** → resemblance-based attribution → new-face protocol: full-res frames + original pitch before any voice reuse.
+- **A melodic span got dubbed as dialogue** → song misclassified → classify SONG in the gap scan; songs stay original, always.
+- **OCR route is taking hours** → wrong primary route → switch to ASR-first (Deepgram); keep OCR as fallback/cross-check only.
+- **Whole mix feels voice-low though levels "match the original"** → the original balance is not the target → proven recipe: per-turn level-match, bed ducked ~x0.55 in turns, dialogue x1.9, dominance ≥ +3 dB per turn in the final mix.
+- **Long job vanished overnight** → runtime/VM restart killed it → skip-guards + resume entry points + watchdog; verify state from output files, not from launch logs.
+
 ## Toolbox — exactly which tool does each step, and how
 
 A new agent must be able to run the whole job from this section alone. Every step names its tool; do not improvise substitutes without testing them against the same checks.
 
 - **Probe and verify the source: ffprobe / ffmpeg.** `ffprobe` for duration, resolution and the stream list (this decides subtitle-stream vs OCR route). `ffmpeg` does every audio/video operation below: frame extraction, chunk splitting, speed fitting, silence stripping, pitch shifting, mixing support and the final remux (video stream copied, never re-encoded unless a size fallback is agreed).
 - **Subtitle tracks from source pages: yt-dlp.** List tracks first (`--list-subs`) and download them even when the page's playable video is a locked preview; verify the cue span against the real file before building segments.
-- **OCR scan of hardcoded subtitles: RapidOCR (`rapidocr-onnxruntime`) with OpenCV (`cv2`) and Pillow.** Method: extract frames with ffmpeg — full frames at 1 fps for contact sheets, plus tight crops of the subtitle band sampled in 0.25 s slabs so sub-second lines survive. OCR each crop with RapidOCR, merge repeated reads of the same on-screen line into one timed segment (first-seen start, last-seen end), then run a repair pass at larger scale over single-language or broken segments and drop junk (scene signs, credits, decorative text). Install the packages with `pip install --target` into the series workspace (`pylibs/`) and import from there; set TMPDIR inside the workspace.
+- **Transcript of the original audio: Deepgram (the `dg` CLI).** Extract a 16 kHz mono WAV of the original audio with ffmpeg and run `dg -o json listen <wav> --diarize --language <code> --model nova-2` (Chinese: `--language zh`). Read per-word start/end/speaker/confidence from the words array and build utterances from the words (the utterances field can be null). This is the PRIMARY transcript route — seconds per episode instead of hours of OCR. Clusters are hints only; attribution is per utterance (frames + pitch + meaning). See the connector doc for the Deepgram connection for login and quirks.
+- **OCR scan of hardcoded subtitles (fallback route): RapidOCR (`rapidocr-onnxruntime`) with OpenCV (`cv2`) and Pillow.** Method: extract frames with ffmpeg — full frames at 1 fps for contact sheets, plus tight crops of the subtitle band sampled in 0.25 s slabs so sub-second lines survive. OCR each crop with RapidOCR, merge repeated reads of the same on-screen line into one timed segment (first-seen start, last-seen end), then run a repair pass at larger scale over single-language or broken segments and drop junk (scene signs, credits, decorative text). Install the packages with `pip install --target` into the series workspace (`pylibs/`) and import from there; set TMPDIR inside the workspace.
 - **Contact sheets for attribution: Pillow.** Tile the 1 fps frames into labeled sheets (segment number, timestamp, pitch estimate printed on each tile), about 30 segments per sheet, and read them scene by scene.
 - **Pitch (F0) measurement: a small custom script (`pitch.py`) using numpy + scipy on a 16 kHz mono WAV** extracted with ffmpeg. It estimates F0 per segment window for speaker attribution support and for the post-fit drift check on expressive voices. Treat its readings as support only: it jumps octaves in loud scenes, so fold readings down an octave when they contradict the frames and the dialogue.
 - **Voice synthesis: the `tts` CLI** — `tts speak --output <file> --voice <voice ID> --language <code> --text-stdin`, line passed on stdin. The voice catalog is a JSON file of voice IDs with names; catalog pitch/age labels are unreliable for non-English synthesis, so every new voice is chosen by test lines measured with the pitch script, never by the label.
@@ -244,12 +312,16 @@ A new agent must be able to run the whole job from this section alone. Every ste
 - **Track building and mixing: Python (numpy + soundfile) driving ffmpeg.** Place fitted clips on a silent timeline at turn starts, level-match each clip's RMS to the original vocal stem in its window (clamp 0.4-4.0x). Mix: bed x0.6, dialogue x1.9, `amix normalize=0`, master with `loudnorm` at about -15 LUFS, true peak -1.5. On long files, stream the mix in blocks and measure through a memory map — never hold several full-length float arrays in RAM. Judge turn audibility with speech-frame dominance in the final mix (target about +3 dB), not whole-window averages.
 - **Delivery tooling: ffmpeg + file hosts.** Split oversize masters with ffmpeg stream-copy at keyframe/scene boundaries into playable parts under the host's real limit; verify every uploaded part by md5 before sharing its link; keep a local master and an editable pack (music-only video, dialogue track, per-character clips, voice list, subtitles, QA reports).
 
-## Keep improving this skill
+## Keep improving this skill — the Skill Keeper protocol (the skill teaches itself)
 
-- Append each new lesson, problem and fix from a dubbing job to this skill right after the job, written as method only with no episode names, show names or user details.
+This skill is a living studio manual: it must come out of every job smarter than it went in. The last stage of EVERY job is a dedicated **Skill Keeper pass** — never skip it, never leave it "for later".
 
-- Try to raise quality on every new episode through better fitting, better emotion in the lines and better mixes, while keeping every approved character voice identical.
-
+- **Harvest.** Collect everything the job taught: tester reports, the lip-sync report, the chunk-lock records, every fix that worked, every fix that failed first, every user correction or complaint during the session, and every surprise (a tool behaviour, a source quirk, a measurement trap).
+- **Generalize.** Write each finding as METHOD only — the rule, the numbers, the check — with no episode names, show names or user details. A finding that only describes one episode is not a lesson; the pattern underneath it is.
+- **Place it where it operates.** A rule that changes how a stage runs goes INTO that stage's section (pipeline, fitting, mixing, testing), not only into Lessons — an agent mid-job reads the stage section, not the appendix. Lessons is the inbox; the fault index gets a new row whenever a symptom got a proven fix; genuinely superseded rules are EDITED or REMOVED in place, never left standing next to their replacement.
+- **Dedupe and reconcile.** Before adding, search the skill for the same rule in other words; merge instead of duplicating. If a new finding contradicts an old rule, resolve it in the same pass (the newer, evidence-backed rule wins and the old text is corrected) — a skill that contradicts itself teaches nothing.
+- **User corrections land the same session.** Anything the user teaches, forbids or re-orders mid-job is applied to the work immediately AND written into the skill before the job closes, marked with its date. Standing user rules (language style, masala level, brand assets, delivery format) live in their sections, so the next agent obeys them without being told again.
+- **Quality ratchet.** Each new episode must be measurably at least as good as the last on the same checks: tester findings trending down, chunk-scan flags trending down, no defect class repeating from the fault index. A repeated fault-index defect means the rule was not actually applied — treat that as a process failure and strengthen the rule's placement or wording.
 - Read this skill and the series voice map before starting any new dubbing job so earlier lessons and locked voices carry over.
 
 ## Available connectors
